@@ -1,7 +1,9 @@
 import os
 import threading
+import asyncio
+import time
 from flask import Flask, render_template_string, send_from_directory
-from telethon import TelegramClient, events
+from telethon import TelegramClient
 
 # -----------------------------
 # Configuración
@@ -18,32 +20,33 @@ os.makedirs(FILES_DIR, exist_ok=True)
 # -----------------------------
 client = TelegramClient("user_session", api_id, api_hash)
 
-@client.on(events.NewMessage())
-async def handler(event):
-    # Log de prueba: cualquier mensaje recibido
-    chat = await event.get_chat()
-    chat_username = getattr(chat, 'username', None)
-    print(f"[LOG] Mensaje recibido de chat: {chat_username}")
+# -----------------------------
+# Función de polling
+# -----------------------------
+async def check_channel():
+    await client.start()
+    print("🤖 Bot conectado y revisando canal...")
+    channel = await client.get_entity(channel_username)
+    downloaded_files = set()  # Para no volver a descargar archivos repetidos
 
-    # Solo procesar mensajes del canal especificado
-    if chat_username == channel_username:
-        # Detecta si hay archivo
-        if event.file:
-            filename = event.file.name or "archivo.bin"
-            file_path = os.path.join(FILES_DIR, filename)
-            await event.download_media(file_path)
-            print(f"[LOG] 📂 Archivo guardado: {filename}")
-        else:
-            # Mensaje sin archivo
-            print(f"[LOG] Mensaje sin archivo: {event.text}")
+    while True:
+        async for message in client.iter_messages(channel, limit=20):
+            if message.file:
+                filename = message.file.name or f"{message.id}.bin"
+                if filename not in downloaded_files:
+                    path = os.path.join(FILES_DIR, filename)
+                    await message.download_media(path)
+                    downloaded_files.add(filename)
+                    print(f"[LOG] 📂 Archivo guardado: {filename}")
+            else:
+                print(f"[LOG] Mensaje sin archivo: {message.text if message.text else 'sin texto'}")
+        await asyncio.sleep(10)  # Espera 10 segundos antes de revisar de nuevo
 
 # -----------------------------
 # Hilo para el bot
 # -----------------------------
 def run_bot():
-    print("🤖 Bot corriendo y escuchando archivos...")
-    client.start()
-    client.run_until_disconnected()
+    asyncio.run(check_channel())
 
 # -----------------------------
 # Flask app
