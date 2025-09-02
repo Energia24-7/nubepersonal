@@ -21,7 +21,8 @@ FILES_DIR = "files"
 os.makedirs(FILES_DIR, exist_ok=True)
 
 # Inicializar cliente de Telethon
-client = TelegramClient(SESSION, API_ID, API_HASH)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8326849462:AAEpz_ZX1ASS-4REHT8GoYeAndNN8glwepM")
+client = TelegramClient(SESSION, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # Flask para servir archivos
 app = Flask(__name__)
