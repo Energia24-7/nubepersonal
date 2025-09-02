@@ -17,7 +17,7 @@ async def main():
     print("✅ Bot conectado y listo")
 
     # Ejemplo: leer los últimos 10 mensajes de un canal
-    canal = "https://t.me/TU_CANAL"  # Cambia por @nombre o link
+    canal = "https://t.me/+NzmSbxBEQOI4YWZh"  # Cambia por @nombre o link
     async for mensaje in client.iter_messages(canal, limit=10):
         if mensaje.file:
             print("📂 Archivo encontrado:")
