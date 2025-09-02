@@ -1,29 +1,21 @@
 import os
-from telethon import TelegramClient
-from dotenv import load_dotenv
 import asyncio
+from telethon import TelegramClient, events
 
-# Cargar credenciales desde config.env
-load_dotenv("config.env")
-
+# Lee las variables desde Render
 api_id = int(os.getenv("API_ID"))
 api_hash = os.getenv("API_HASH")
 bot_token = os.getenv("BOT_TOKEN")
 
-# Sesión del bot
+# Inicializa el cliente como BOT
 client = TelegramClient("bot_session", api_id, api_hash).start(bot_token=bot_token)
 
-async def main():
-    print("✅ Bot conectado y listo")
+@client.on(events.NewMessage(pattern="/start"))
+async def handler(event):
+    await event.reply("👋 ¡Hola! Estoy corriendo en Render 24/7 🚀")
 
-    # Ejemplo: leer los últimos 10 mensajes de un canal
-    canal = "https://t.me/+NzmSbxBEQOI4YWZh"  # Cambia por @nombre o link
-    async for mensaje in client.iter_messages(canal, limit=10):
-        if mensaje.file:
-            print("📂 Archivo encontrado:")
-            print(f" - Nombre: {mensaje.file.name}")
-            print(f" - Tamaño: {mensaje.file.size/1024:.2f} KB")
-            print(f" - File ID: {mensaje.file.id}")
-            print("-----------")
+async def main():
+    print("✅ Bot conectado y escuchando mensajes...")
+    await client.run_until_disconnected()
 
 asyncio.run(main())
