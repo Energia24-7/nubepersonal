@@ -8,7 +8,7 @@ from telethon import TelegramClient, events
 # -----------------------------
 api_id = int(os.getenv("API_ID"))
 api_hash = os.getenv("API_HASH")
-channel_username = os.getenv("CHANNEL_USERNAME")  # ej: "MiCanal"
+channel_username = os.getenv("CHANNEL_USERNAME")  # ej: "MiCanal" sin @
 
 FILES_DIR = "files"
 os.makedirs(FILES_DIR, exist_ok=True)
@@ -18,14 +18,24 @@ os.makedirs(FILES_DIR, exist_ok=True)
 # -----------------------------
 client = TelegramClient("user_session", api_id, api_hash)
 
-@client.on(events.NewMessage(func=lambda e: e.file))
+@client.on(events.NewMessage())
 async def handler(event):
-    # Filtrar solo el canal que te interesa
-    if event.chat.username == channel_username:
-        filename = event.file.name or "archivo.bin"
-        file_path = os.path.join(FILES_DIR, filename)
-        await event.download_media(file_path)
-        print(f"📂 Archivo guardado: {filename}")
+    # Log de prueba: cualquier mensaje recibido
+    chat = await event.get_chat()
+    chat_username = getattr(chat, 'username', None)
+    print(f"[LOG] Mensaje recibido de chat: {chat_username}")
+
+    # Solo procesar mensajes del canal especificado
+    if chat_username == channel_username:
+        # Detecta si hay archivo
+        if event.file:
+            filename = event.file.name or "archivo.bin"
+            file_path = os.path.join(FILES_DIR, filename)
+            await event.download_media(file_path)
+            print(f"[LOG] 📂 Archivo guardado: {filename}")
+        else:
+            # Mensaje sin archivo
+            print(f"[LOG] Mensaje sin archivo: {event.text}")
 
 # -----------------------------
 # Hilo para el bot
