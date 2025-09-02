@@ -16,18 +16,18 @@ FILES_DIR = "files"
 os.makedirs(FILES_DIR, exist_ok=True)
 
 # -----------------------------
-# Cliente de usuario Telethon
+# Cliente de usuario Telethon usando sesión preautenticada
 # -----------------------------
-client = TelegramClient("user_session", api_id, api_hash)
+client = TelegramClient('user_session', api_id, api_hash)
 
 # -----------------------------
 # Función de polling
 # -----------------------------
 async def check_channel():
-    await client.start()
+    await client.start()  # No pedirá input, usará la sesión
     print("🤖 Bot conectado y revisando canal...")
     channel = await client.get_entity(channel_username)
-    downloaded_files = set()  # Para no volver a descargar archivos repetidos
+    downloaded_files = set(os.listdir(FILES_DIR))  # Evita duplicados
 
     while True:
         async for message in client.iter_messages(channel, limit=20):
@@ -40,7 +40,7 @@ async def check_channel():
                     print(f"[LOG] 📂 Archivo guardado: {filename}")
             else:
                 print(f"[LOG] Mensaje sin archivo: {message.text if message.text else 'sin texto'}")
-        await asyncio.sleep(10)  # Espera 10 segundos antes de revisar de nuevo
+        await asyncio.sleep(10)  # Revisa cada 10 segundos
 
 # -----------------------------
 # Hilo para el bot
