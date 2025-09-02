@@ -1,116 +1,84 @@
 import os
-import threading
 import asyncio
-import time
-from flask import Flask, render_template_string, send_from_directory
+import threading
 from telethon import TelegramClient
+from flask import Flask, send_from_directory, render_template_string
 
-# -----------------------------
+# =====================
 # Configuración
-# -----------------------------
-api_id = int(os.getenv("API_ID"))
-api_hash = os.getenv("API_HASH")
-channel_username = os.getenv("CHANNEL_USERNAME")  # Ej: "MiCanal" sin @
+# =====================
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+SESSION_NAME = "user_session"  # Archivo .session creado en tu PC
+CHANNEL_ID = os.getenv("CHANNEL_ID", "NombreDelCanal")  # sin @
+DOWNLOAD_DIR = "files"
 
-FILES_DIR = "files"
-os.makedirs(FILES_DIR, exist_ok=True)
+# Crear carpeta si no existe
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# -----------------------------
-# Cliente Telethon usando sesión preautenticada
-# -----------------------------
-# 'user_session' es el nombre del archivo .session que generaste localmente
-client = TelegramClient('user_session', api_id, api_hash)
+# Cliente de usuario
+client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
-# -----------------------------
-# Función de polling para revisar canal
-# -----------------------------
+# =====================
+# Lógica para leer canal
+# =====================
 async def check_channel():
-    await client.start()  # Usa la sesión, no pedirá input
-    print("🤖 Bot conectado y revisando canal...")
-    channel = await client.get_entity(channel_username)
-    downloaded_files = set(os.listdir(FILES_DIR))  # Evita duplicados
+    await client.start()  # Usará user_session.session, no pedirá número ni OTP
+    print("✅ Cliente conectado como usuario")
 
+    channel = await client.get_entity(CHANNEL_ID)
+
+    async for message in client.iter_messages(channel, limit=20):  # últimos 20 mensajes
+        if message.file:
+            path = os.path.join(DOWNLOAD_DIR, message.file.name or f"file_{message.id}")
+            if not os.path.exists(path):
+                await message.download_media(file=path)
+                print(f"📥 Archivo guardado: {path}")
+
+    # Loop para nuevos mensajes
     while True:
-        try:
-            async for message in client.iter_messages(channel, limit=20):
-                if message.file:
-                    filename = message.file.name or f"{message.id}.bin"
-                    if filename not in downloaded_files:
-                        path = os.path.join(FILES_DIR, filename)
-                        await message.download_media(path)
-                        downloaded_files.add(filename)
-                        print(f"[LOG] 📂 Archivo guardado: {filename}")
-                else:
-                    print(f"[LOG] Mensaje sin archivo: {message.text if message.text else 'sin texto'}")
-        except Exception as e:
-            print(f"[ERROR] {e}")
-        await asyncio.sleep(10)  # Revisa cada 10 segundos
+        async for message in client.iter_messages(channel, limit=5):
+            if message.file:
+                path = os.path.join(DOWNLOAD_DIR, message.file.name or f"file_{message.id}")
+                if not os.path.exists(path):
+                    await message.download_media(file=path)
+                    print(f"📥 Nuevo archivo: {path}")
+        await asyncio.sleep(15)  # cada 15s revisa el canal
 
-# -----------------------------
-# Hilo para ejecutar el bot
-# -----------------------------
-def run_bot():
-    asyncio.run(check_channel())
-
-# -----------------------------
-# Flask app para interfaz web
-# -----------------------------
+# =====================
+# Servidor Flask
+# =====================
 app = Flask(__name__)
 
 @app.route("/")
-def home():
-    files = os.listdir(FILES_DIR)
+def index():
+    files = os.listdir(DOWNLOAD_DIR)
     html = """
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <title>Gestor de Archivos Telegram</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="bg-light">
-        <div class="container py-5">
-            <h1 class="mb-4 text-center">📂 Archivos subidos desde Telegram</h1>
-            
-            {% if files %}
-            <table class="table table-bordered table-striped">
-                <thead class="table-dark">
-                    <tr>
-                        <th>#</th>
-                        <th>Nombre del archivo</th>
-                        <th>Acción</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for f in files %}
-                    <tr>
-                        <td>{{ loop.index }}</td>
-                        <td>{{ f }}</td>
-                        <td>
-                            <a href="/download/{{f}}" class="btn btn-primary btn-sm">⬇ Descargar</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="alert alert-info text-center">
-                Aún no hay archivos subidos. 📭
-            </div>
-            {% endif %}
-        </div>
-    </body>
-    </html>
+    <h1>📂 Archivos descargados</h1>
+    <ul>
+      {% for file in files %}
+        <li><a href="/files/{{file}}">{{file}}</a></li>
+      {% endfor %}
+    </ul>
     """
     return render_template_string(html, files=files)
 
-@app.route("/download/<filename>")
-def download(filename):
-    return send_from_directory(FILES_DIR, filename, as_attachment=True)
+@app.route("/files/<path:filename>")
+def download_file(filename):
+    return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=True)
 
-# -----------------------------
-# Ejecutar bot + Flask
-# -----------------------------
+# =====================
+# Ejecutar bot y web
+# =====================
+def run_bot():
+    asyncio.run(check_channel())
+
+def run_web():
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    t = threading.Thread(target=run_bot, daemon=True)
+    t.start()
+    run_web()
+
