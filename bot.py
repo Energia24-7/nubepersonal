@@ -3,34 +3,43 @@ import threading
 from flask import Flask, render_template_string, send_from_directory
 from telethon import TelegramClient, events
 
-# Variables de entorno
+# -----------------------------
+# Configuración
+# -----------------------------
 api_id = int(os.getenv("API_ID"))
 api_hash = os.getenv("API_HASH")
-bot_token = os.getenv("BOT_TOKEN")
+channel_username = os.getenv("CHANNEL_USERNAME")  # ej: "MiCanal"
 
-# Carpeta donde se guardan archivos
 FILES_DIR = "files"
 os.makedirs(FILES_DIR, exist_ok=True)
 
-# Inicia cliente de Telethon
-client = TelegramClient("bot", api_id, api_hash).start(bot_token=bot_token)
+# -----------------------------
+# Cliente de usuario Telethon
+# -----------------------------
+client = TelegramClient("user_session", api_id, api_hash)
 
-# Cuando el usuario envía un archivo al bot
 @client.on(events.NewMessage(func=lambda e: e.file))
 async def handler(event):
-    file_path = os.path.join(FILES_DIR, event.file.name or "file.bin")
-    await event.download_media(file_path)
-    await event.reply(f"📂 Archivo guardado: {event.file.name}")
+    # Filtrar solo el canal que te interesa
+    if event.chat.username == channel_username:
+        filename = event.file.name or "archivo.bin"
+        file_path = os.path.join(FILES_DIR, filename)
+        await event.download_media(file_path)
+        print(f"📂 Archivo guardado: {filename}")
 
-# Hilo del bot
+# -----------------------------
+# Hilo para el bot
+# -----------------------------
 def run_bot():
-    print("🤖 Bot corriendo...")
+    print("🤖 Bot corriendo y escuchando archivos...")
+    client.start()
     client.run_until_disconnected()
 
+# -----------------------------
 # Flask app
+# -----------------------------
 app = Flask(__name__)
 
-# Página principal - lista de archivos
 @app.route("/")
 def home():
     files = os.listdir(FILES_DIR)
@@ -78,11 +87,13 @@ def home():
     """
     return render_template_string(html, files=files)
 
-# Ruta de descarga
 @app.route("/download/<filename>")
 def download(filename):
     return send_from_directory(FILES_DIR, filename, as_attachment=True)
 
+# -----------------------------
+# Ejecutar bot + Flask
+# -----------------------------
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
