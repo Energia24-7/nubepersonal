@@ -1,8 +1,9 @@
 import os
 import threading
 import asyncio
+from datetime import datetime
 from flask import Flask, render_template_string, send_from_directory
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 
 # -----------------------------
 # Configuración
@@ -14,44 +15,66 @@ channel_username = os.getenv("CHANNEL_USERNAME")  # Ej: "MiCanal" sin @
 FILES_DIR = "files"
 os.makedirs(FILES_DIR, exist_ok=True)
 
+# Filtros
+ALLOWED_EXTENSIONS = {"jpg", "png", "pdf"}   # extensiones válidas
+MAX_FILE_SIZE_MB = 10                        # máximo 10 MB
+MIN_DATE = datetime(2025, 1, 1)              # ignora archivos subidos antes de esta fecha
+
 # -----------------------------
-# Cliente Telethon usando sesión preautenticada
+# Cliente Telethon usando sesión
 # -----------------------------
 SESSION_NAME = 'user_session'  # Archivo: user_session.session
 client = TelegramClient(SESSION_NAME, api_id, api_hash)
 
+
 # -----------------------------
-# Función de polling para revisar canal
+# Handler de mensajes nuevos
 # -----------------------------
-async def check_channel():
-    await client.connect()
-    if not await client.is_user_authorized():
-        print("❌ Sesión no autorizada. Debes subir user_session.session")
+@client.on(events.NewMessage(chats=channel_username))
+async def handler(event):
+    message = event.message
+
+    if not message.file:
+        return  # ignorar si no es archivo
+
+    # Fecha de subida
+    if message.date.replace(tzinfo=None) < MIN_DATE:
+        print(f"⏭ Ignorado por fecha: {message.id}")
         return
 
-    print("🤖 Bot conectado y revisando canal...")
-    channel = await client.get_entity(channel_username)
-    downloaded_files = set(os.listdir(FILES_DIR))
+    # Tamaño en MB
+    size_mb = (message.file.size or 0) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        print(f"⏭ Ignorado por tamaño: {message.id} ({size_mb:.2f} MB)")
+        return
 
-    while True:
-        try:
-            async for message in client.iter_messages(channel, limit=20):
-                if message.file:
-                    filename = message.file.name or f"{message.id}.bin"
-                    if filename not in downloaded_files:
-                        path = os.path.join(FILES_DIR, filename)
-                        await message.download_media(path)
-                        downloaded_files.add(filename)
-                        print(f"[LOG] 📂 Archivo guardado: {filename}")
-        except Exception as e:
-            print(f"[ERROR] {e}")
-        await asyncio.sleep(10)  # Revisa cada 10 segundos
+    # Nombre del archivo
+    if message.photo:
+        filename = f"photo_{message.id}.jpg"
+    else:
+        filename = message.file.name or f"file_{message.id}.bin"
+
+    # Validar extensión
+    ext = filename.split(".")[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        print(f"⏭ Ignorado por extensión: {filename}")
+        return
+
+    # Descargar si no existe
+    path = os.path.join(FILES_DIR, filename)
+    if not os.path.exists(path):
+        await message.download_media(path)
+        print(f"✅ Guardado: {filename}")
+
 
 # -----------------------------
 # Hilo para ejecutar el bot
 # -----------------------------
 def run_bot():
-    asyncio.run(check_channel())
+    asyncio.run(client.start())
+    print("🤖 Bot escuchando mensajes en tiempo real...")
+    client.run_until_disconnected()
+
 
 # -----------------------------
 # Flask app para interfaz web
@@ -71,14 +94,14 @@ def home():
     </head>
     <body class="bg-light">
         <div class="container py-5">
-            <h1 class="mb-4 text-center">📂 Archivos subidos desde Telegram</h1>
+            <h1 class="mb-4 text-center">📂 Archivos desde Telegram</h1>
             
             {% if files %}
             <table class="table table-bordered table-striped">
                 <thead class="table-dark">
                     <tr>
                         <th>#</th>
-                        <th>Nombre del archivo</th>
+                        <th>Archivo</th>
                         <th>Acción</th>
                     </tr>
                 </thead>
@@ -96,7 +119,7 @@ def home():
             </table>
             {% else %}
             <div class="alert alert-info text-center">
-                Aún no hay archivos subidos. 📭
+                Aún no hay archivos disponibles. 📭
             </div>
             {% endif %}
         </div>
@@ -109,9 +132,10 @@ def home():
 def download(filename):
     return send_from_directory(FILES_DIR, filename, as_attachment=True)
 
+
 # -----------------------------
 # Ejecutar bot + Flask
 # -----------------------------
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
+    threading.Thread(target=run_bot, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
