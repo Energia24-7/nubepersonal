@@ -16,7 +16,7 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1001234567890"))
 
 os.makedirs(FILES_DIR, exist_ok=True)
 
-# Cliente BOT
+# Cliente BOT (ya iniciado)
 client = TelegramClient(SESSION, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # ======================
